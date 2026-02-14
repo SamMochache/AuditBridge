@@ -507,14 +507,15 @@ const StudentDetailModal = ({ student, fees, loading, onClose }) => {
   };
 
   // Group fees by academic year and term
-  const groupedFees = fees.reduce((acc, fee) => {
+  // Add safety check to ensure fees is an array
+  const groupedFees = Array.isArray(fees) ? fees.reduce((acc, fee) => {
     const key = `${fee.academic_year_name} - Term ${fee.term}`;
     if (!acc[key]) {
       acc[key] = [];
     }
     acc[key].push(fee);
     return acc;
-  }, {});
+  }, {}) : {};
 
   return (
     <div className="fixed inset-0 bg-navy-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">

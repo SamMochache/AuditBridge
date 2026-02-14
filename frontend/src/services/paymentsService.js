@@ -57,9 +57,11 @@ export const paymentsService = {
   },
 
   // Get student fees
+  // FIXED: The API returns paginated data {count, results}, so extract the results array
   getStudentFees: async (id) => {
     const response = await api.get(`/payments/students/${id}/fees/`);
-    return response.data;
+    // Handle both paginated response and direct array
+    return response.data.results || response.data;
   },
 
   // Get collection trends
