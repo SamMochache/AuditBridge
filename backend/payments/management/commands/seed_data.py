@@ -23,8 +23,17 @@ class Command(BaseCommand):
             action='store_true',
             help='Clear existing data before seeding',
         )
+        parser.add_argument(
+            '--skip-if-exists',
+            action='store_true',
+            help='Do nothing if data has already been seeded',
+        )
 
     def handle(self, *args, **options):
+        if options['skip_if_exists'] and School.objects.exists():
+            self.stdout.write('Data already seeded — skipping.')
+            return
+
         if options['clear']:
             self.stdout.write('Clearing existing data...')
             Payment.objects.all().delete()
