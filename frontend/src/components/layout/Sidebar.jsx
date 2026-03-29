@@ -6,6 +6,7 @@ import {
   Upload,
   Users,
   CreditCard,
+  BarChart2,
   Settings,
   LogOut,
   Menu,
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Upload Payments', href: '/upload', icon: Upload },
   { name: 'Students', href: '/students', icon: Users },
   { name: 'Payments', href: '/payments', icon: CreditCard },
+  { name: 'Analytics', href: '/analytics', icon: BarChart2 },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

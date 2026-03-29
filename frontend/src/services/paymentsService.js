@@ -70,6 +70,12 @@ export const paymentsService = {
     return response.data.results || response.data;
   },
 
+  // Get per-term analytics
+  getTermStats: async () => {
+    const response = await api.get('/payments/dashboard/term-stats/');
+    return response.data;
+  },
+
   // Get collection trends
   getCollectionTrends: async () => {
     const response = await api.get('/payments/dashboard/trends/');

@@ -17,6 +17,7 @@ from .views import (
     DashboardStatsView,
     CollectionTrendsView,
     ClassBalancesView,
+    TermStatsView,
     AuditTrailView,
 )
 
@@ -40,5 +41,6 @@ urlpatterns = [
     path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
     path('dashboard/trends/', CollectionTrendsView.as_view(), name='collection-trends'),
     path('dashboard/class-balances/', ClassBalancesView.as_view(), name='class-balances'),
+    path('dashboard/term-stats/', TermStatsView.as_view(), name='term-stats'),
     path('audit-trail/', AuditTrailView.as_view(), name='audit-trail'),
 ]

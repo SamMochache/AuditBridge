@@ -368,6 +368,86 @@ class ClassBalancesView(generics.ListAPIView):
         return Response(class_data)
 
 
+class TermStatsView(APIView):
+    """
+    Per-term fee collection breakdown.
+    Returns stats for each of Term 1, 2, and 3:
+      - total expected / paid / outstanding
+      - collection rate
+      - student payment status counts (fully paid / partial / unpaid)
+      - per fee-item breakdown with individual rates
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from academics.models import StudentFee, Student
+        from django.db.models import Sum, Count, F
+
+        school = request.user.school
+        term_data = []
+
+        for term_num in [1, 2, 3]:
+            fees = StudentFee.objects.filter(student__school=school, term=term_num)
+
+            agg = fees.aggregate(
+                total_expected=Sum('fee_item__amount'),
+                total_paid=Sum('amount_paid'),
+            )
+            total_expected = float(agg['total_expected'] or 0)
+            total_paid = float(agg['total_paid'] or 0)
+            collection_rate = round(total_paid / total_expected * 100, 1) if total_expected else 0
+
+            # Per fee-item breakdown
+            fee_breakdown = list(
+                fees.values('fee_item__name').annotate(
+                    expected=Sum('fee_item__amount'),
+                    paid=Sum('amount_paid'),
+                ).order_by('fee_item__name')
+            )
+
+            # Student payment status for this term
+            student_term = (
+                Student.objects.filter(school=school, fees__term=term_num)
+                .annotate(
+                    total_fees=Count('fees', filter=Q(fees__term=term_num)),
+                    paid_fees=Count('fees', filter=Q(fees__term=term_num, fees__is_paid=True)),
+                )
+                .distinct()
+            )
+            fully_paid = student_term.filter(total_fees=F('paid_fees')).count()
+            unpaid    = student_term.filter(paid_fees=0).count()
+            partial   = student_term.count() - fully_paid - unpaid
+
+            term_data.append({
+                'term': term_num,
+                'label': f'Term {term_num}',
+                'total_expected': total_expected,
+                'total_paid': total_paid,
+                'outstanding': total_expected - total_paid,
+                'collection_rate': collection_rate,
+                'students': {
+                    'fully_paid': fully_paid,
+                    'partial': partial,
+                    'unpaid': unpaid,
+                    'total': fully_paid + partial + unpaid,
+                },
+                'fee_breakdown': [
+                    {
+                        'name': item['fee_item__name'],
+                        'expected': float(item['expected'] or 0),
+                        'paid': float(item['paid'] or 0),
+                        'outstanding': float((item['expected'] or 0) - (item['paid'] or 0)),
+                        'rate': round(
+                            float(item['paid'] or 0) / float(item['expected'] or 1) * 100, 1
+                        ),
+                    }
+                    for item in fee_breakdown
+                ],
+            })
+
+        return Response({'terms': term_data})
+
+
 class AuditTrailView(generics.ListAPIView):
     """Immutable payment audit trail"""
     serializer_class = PaymentSerializer

@@ -6,6 +6,7 @@ import Layout from './components/layout/Layout';
 import Upload from './pages/Upload';
 import Students from './pages/Students';
 import Payments from './pages/Payments';
+import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 
 // Protected Route wrapper
@@ -58,6 +59,7 @@ function App() {
           <Route path="upload" element={<Upload />} />
           <Route path="students" element={<Students />} />
           <Route path="payments" element={<Payments />} />
+          <Route path="analytics" element={<Analytics />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 
