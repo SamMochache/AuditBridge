@@ -52,12 +52,13 @@ class UserLoginSerializer(serializers.Serializer):
 
 class UserSerializer(serializers.ModelSerializer):
     school_name = serializers.CharField(source='school.name', read_only=True)
-    
+    paybill_number = serializers.CharField(source='school.paybill_number', read_only=True)
+
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'phone_number', 'role', 'school', 'school_name',
+            'phone_number', 'role', 'school', 'school_name', 'paybill_number',
             'is_active', 'date_joined'
         ]
         read_only_fields = ['id', 'date_joined']

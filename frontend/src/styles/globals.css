@@ -8,63 +8,47 @@
   * {
     @apply border-navy-200;
   }
-  
+
   body {
-    @apply bg-gray-50 text-navy-900 font-sans antialiased;
+    @apply text-navy-900 font-sans antialiased;
+    background-color: #f0f2f7;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(99, 91, 255, 0.06) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(0, 212, 170, 0.05) 0%, transparent 60%);
+    background-attachment: fixed;
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    @apply w-2 h-2;
-  }
-
-  ::-webkit-scrollbar-track {
-    @apply bg-gray-100;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-navy-300 rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-navy-400;
-  }
+  ::-webkit-scrollbar { @apply w-1.5 h-1.5; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-navy-300 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-navy-400; }
 }
 
 @layer components {
-  /* Glass morphism effect */
   .glass {
     @apply bg-white/70 backdrop-blur-md border border-white/20;
   }
 
-  /* Premium card */
   .card-premium {
-    @apply bg-white rounded-xl shadow-premium border border-gray-200 p-6;
+    @apply bg-white rounded-xl shadow-premium border border-navy-200 p-6;
   }
 
-  /* Gradient text */
   .text-gradient {
     @apply bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent;
   }
 
-  /* Focus ring premium */
   .focus-ring {
     @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
   }
 
-  /* Smooth transitions */
   .transition-smooth {
     @apply transition-all duration-200 ease-in-out;
   }
 }
 
 @layer utilities {
-  /* Text utilities */
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
 
-  /* Truncate utilities */
   .truncate-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -78,36 +62,40 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  /* Animation delay utilities used in Login blobs */
+  .animation-delay-2000 { animation-delay: 2s; }
+  .animation-delay-4000 { animation-delay: 4s; }
 }
 
-/* Number formatting */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* Premium animations */
+/* ── Loading skeleton ──────────────────────────────────────────── */
 @keyframes shimmer {
-  0% {
-    background-position: -1000px 0;
-  }
-  100% {
-    background-position: 1000px 0;
-  }
+  0%   { background-position: -1000px 0; }
+  100% { background-position:  1000px 0; }
 }
 
 .animate-shimmer {
   animation: shimmer 2s infinite linear;
-  background: linear-gradient(
-    to right,
-    #f6f7f8 0%,
-    #edeef1 20%,
-    #f6f7f8 40%,
-    #f6f7f8 100%
-  );
+  background: linear-gradient(to right, #f0f2f7 0%, #e6e9f0 20%, #f0f2f7 40%, #f0f2f7 100%);
   background-size: 1000px 100%;
 }
 
-/* Loading skeleton */
 .skeleton {
-  @apply animate-shimmer rounded bg-gray-200;
+  @apply animate-shimmer rounded bg-navy-100;
+}
+
+/* ── Blob animation (Login page background) ────────────────────── */
+@keyframes blob {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  33%  { transform: translate(30px, -50px) scale(1.1); }
+  66%  { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.animate-blob {
+  animation: blob 7s infinite ease-in-out;
 }

@@ -8,14 +8,14 @@ AuditBridge is a full-stack SaaS application that helps Kenyan schools reconcile
 
 ## Features
 
-- **One-click CSV upload** – drag and drop a Safaricom paybill statement or simple CSV
-- **Automatic reconciliation** – payments are matched to students by admission number and applied across multiple fee items
-- **Duplicate detection** – re-uploading the same file skips already-imported transactions
-- **Retry reconciliation** – manually re-trigger matching for any failed payment from the UI
-- **Dashboard** – collection totals, outstanding balances, matched/failed counts, collection rate
+- **M-Pesa Paybill reconciliation** – upload the bulk CSV from the Safaricom Business portal; payments are automatically matched to students by admission number
+- **Duplicate detection** – re-uploading the same statement skips already-imported transactions
+- **Retry reconciliation** – re-trigger matching for any failed payment directly from the UI
+- **Term-by-term analytics** – collection rates, fee-item breakdowns, and student payment status per term with visual charts
+- **Dashboard** – live collection totals, outstanding balances, matched/failed counts, and recent transactions
 - **Student ledger** – per-student fee breakdown grouped by term with paid/outstanding amounts
-- **Payments audit trail** – immutable log of every transaction with uploaded-by info
-- **JWT authentication** – secure login with token refresh
+- **Payments audit trail** – immutable log of every transaction with uploaded-by and timestamp
+- **JWT authentication** – secure login with access/refresh tokens and automatic token rotation
 - **Role-based users** – ADMIN / TEACHER roles
 
 ---
@@ -161,13 +161,21 @@ Copy `backend/.env.example` to `backend/.env` and set:
 
 ---
 
+## M-Pesa Payment Workflow
+
+### How payments reach the system
+
+1. **Parent pays** — dials `*334#` or uses the M-Pesa app → *Pay Bill* → enters the school's paybill number → enters the **student admission number** (e.g. `NA20260001`) as the account reference → confirms amount.
+2. **School downloads statement** — logs into the [Safaricom M-Pesa Business portal](https://business.safaricom.co.ke) → *Payments* → *Statement* → selects date range → *Export as CSV*.
+3. **Upload to AuditBridge** — drag the downloaded CSV into the Upload page. The system matches each row to a student and marks the relevant fee records as paid.
+
+> **Important:** The account reference the parent enters when paying **must exactly match** the student's admission number in the system (e.g. `NA20260001`). This is how the system links the payment to the right student.
+
+---
+
 ## M-Pesa CSV Upload
 
-### Supported formats
-
-AuditBridge auto-detects the CSV format. Two formats are supported:
-
-#### Format A – Safaricom Paybill Statement (recommended)
+### Safaricom Paybill Statement format
 
 The standard export from the **Safaricom M-Pesa Business portal**. Download it via:
 *Business* → *Payments* → *Statement* → *Export as CSV*
@@ -186,22 +194,7 @@ The parser extracts:
 
 Rows with a blank `Paid In` (withdrawals, charges) are automatically skipped.
 
-#### Format B – Simple / Custom
-
-```
-Transaction Date,Amount,Mpesa Receipt No,Account
-2026-01-15 09:30:00,50000.00,QCV1234567,NA20260001
-2026-01-15 10:15:00,25000.00,SKH9876543,NA20260002
-```
-
-| Column              | Required | Notes                                         |
-|---------------------|----------|-----------------------------------------------|
-| `Transaction Date`  | Yes      | `YYYY-MM-DD HH:MM:SS` or `DD/MM/YYYY HH:MM`  |
-| `Amount`            | Yes      | Numeric, no currency symbol                   |
-| `Mpesa Receipt No`  | Yes      | 10-character M-Pesa code e.g. `QCV1234567`   |
-| `Account`           | Yes      | Student admission number e.g. `NA20260001`    |
-
-Sample template files can be downloaded from the **Upload** page in the app.
+A sample template can be downloaded from the **Upload** page in the app.
 
 ### Reconciliation logic
 
@@ -308,6 +301,24 @@ AuditBridge/
     │       └── ui/
     └── package.json
 ```
+
+---
+
+## Roadmap — What would make this more valuable
+
+These are the highest-impact features to add:
+
+| Feature | Value |
+|---------|-------|
+| **M-Pesa Daraja API (STK Push / C2B)** | Real-time payment notifications — no CSV download needed. Payments appear instantly when a parent pays. |
+| **Parent SMS/WhatsApp receipts** | Automatically message parents when a payment is received: *"KES 50,000 received for John Kamau (NA20260001). Balance: KES 16,000."* |
+| **Fee balance reminder SMS** | Bulk SMS to all parents with outstanding balances before a new term. |
+| **PDF fee statements & receipts** | Generate a printable fee statement or official receipt per student. |
+| **Excel / PDF report export** | End-of-term financial reports for the principal and board of governors. |
+| **Parent portal** | Parents log in (via phone number) to view their child's fee balance and payment history. |
+| **Multi-school management** | One admin account manages multiple schools — ideal for church schools or county councils. |
+| **Fee structure per class** | Different fee amounts for different classes/streams (e.g. Form 4 pays more than Form 1). |
+| **Bank reconciliation** | Cross-check M-Pesa receipts against the school's bank statement for full audit compliance. |
 
 ---
 

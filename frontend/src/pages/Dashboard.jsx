@@ -7,6 +7,8 @@ import {
   AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
+  CheckCircle,
+  Clock,
 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -15,18 +17,23 @@ import toast from 'react-hot-toast';
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);
+  const [recentPayments, setRecentPayments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardStats();
+    fetchAll();
   }, []);
 
-  const fetchDashboardStats = async () => {
+  const fetchAll = async () => {
     try {
-      const data = await paymentsService.getDashboardStats();
-      setStats(data);
+      const [statsData, paymentsData] = await Promise.all([
+        paymentsService.getDashboardStats(),
+        paymentsService.getPayments({ page_size: 8, ordering: '-created_at' }),
+      ]);
+      setStats(statsData);
+      setRecentPayments(paymentsData.results || []);
     } catch (error) {
-      toast.error('Failed to load dashboard stats');
+      toast.error('Failed to load dashboard');
       console.error(error);
     } finally {
       setLoading(false);
@@ -152,12 +159,52 @@ const Dashboard = () => {
         </div>
       </Card>
 
-      {/* Recent Activity placeholder */}
+      {/* Recent Activity */}
       <Card title="Recent Activity" subtitle="Latest payment transactions">
-        <div className="text-center py-12 text-navy-500">
-          <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>Recent activity will appear here</p>
-        </div>
+        {recentPayments.length === 0 ? (
+          <div className="text-center py-12 text-navy-400">
+            <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p className="text-sm">No payments yet. Upload an M-Pesa statement to get started.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-navy-100">
+            {recentPayments.map((p) => (
+              <div key={p.id} className="flex items-center justify-between py-3 gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    p.status === 'MATCHED' ? 'bg-success-100' :
+                    p.status === 'FAILED'  ? 'bg-error-100' : 'bg-navy-100'
+                  }`}>
+                    {p.status === 'MATCHED' ? <CheckCircle className="w-4 h-4 text-success-600" /> :
+                     p.status === 'FAILED'  ? <AlertCircle className="w-4 h-4 text-error-600" /> :
+                                              <Clock className="w-4 h-4 text-navy-500" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-navy-900 truncate">
+                      {p.student_name || p.student_admission_number}
+                    </p>
+                    <p className="text-xs text-navy-400 font-mono">{p.transaction_code}</p>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-sm font-semibold text-navy-900 tabular-nums">
+                    {formatCurrency(p.amount)}
+                  </p>
+                  <p className="text-xs text-navy-400">
+                    {new Date(p.transaction_date).toLocaleDateString('en-KE', { day:'numeric', month:'short' })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {recentPayments.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-navy-100">
+            <a href="/payments" className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-smooth">
+              View all payments →
+            </a>
+          </div>
+        )}
       </Card>
     </div>
   );
