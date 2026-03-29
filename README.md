@@ -33,6 +33,47 @@ AuditBridge is a full-stack SaaS application that helps Kenyan schools reconcile
 
 ## Quick Start
 
+### Option A — Docker (recommended)
+
+The fastest way to run the full stack.
+
+**Prerequisites:** Docker + Docker Compose
+
+```bash
+git clone <repo-url>
+cd AuditBridge
+
+# Ensure backend/.env exists with at least DB_PASSWORD set
+# (copy from the example if needed)
+cp backend/.env.example backend/.env
+# Edit backend/.env → set DB_PASSWORD and SECRET_KEY
+
+docker compose up --build
+```
+
+| Service  | URL                          |
+|----------|------------------------------|
+| App      | http://localhost             |
+| API      | http://localhost/api/        |
+| Admin    | http://localhost/admin/      |
+
+To seed demo data on first run:
+
+```bash
+docker compose exec backend python manage.py seed_data
+```
+
+To stop and remove containers:
+
+```bash
+docker compose down          # keep the database volume
+docker compose down -v       # also delete the database
+```
+
+---
+
+### Option B — Local development
+
 ### Prerequisites
 
 - Python 3.10+
