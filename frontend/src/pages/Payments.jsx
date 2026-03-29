@@ -395,6 +395,11 @@ const Payments = () => {
         <PaymentDetailModal
           payment={selectedPayment}
           onClose={() => setSelectedPayment(null)}
+          onRetrySuccess={(updated) => {
+            setPayments((prev) =>
+              prev.map((p) => (p.id === updated.id ? updated : p))
+            );
+          }}
         />
       )}
     </div>
@@ -445,7 +450,23 @@ const PaymentStatusBadge = ({ status }) => {
 };
 
 // Payment Detail Modal Component
-const PaymentDetailModal = ({ payment, onClose }) => {
+const PaymentDetailModal = ({ payment, onClose, onRetrySuccess }) => {
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      const result = await paymentsService.retryReconcilePayment(payment.id);
+      toast.success(result.success);
+      onRetrySuccess(result.payment);
+      onClose();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Re-reconciliation failed');
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-KE', {
       style: 'currency',
@@ -598,6 +619,16 @@ const PaymentDetailModal = ({ payment, onClose }) => {
 
         {/* Footer */}
         <div className="px-6 py-4 bg-navy-50 border-t border-navy-200 flex justify-end gap-3 rounded-b-2xl">
+          {(payment.status === 'FAILED' || payment.status === 'UNPROCESSED') && (
+            <Button
+              variant="primary"
+              icon={RefreshCw}
+              loading={retrying}
+              onClick={handleRetry}
+            >
+              Retry Reconciliation
+            </Button>
+          )}
           <Button variant="secondary" onClick={onClose}>
             Close
           </Button>

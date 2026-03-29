@@ -32,9 +32,15 @@ export const paymentsService = {
     return response.data;
   },
 
-  // Reconcile payments
+  // Reconcile all unprocessed payments
   reconcilePayments: async () => {
     const response = await api.post('/payments/reconcile/');
+    return response.data;
+  },
+
+  // Retry reconciliation for a single failed payment
+  retryReconcilePayment: async (id) => {
+    const response = await api.post(`/payments/${id}/retry/`);
     return response.data;
   },
 

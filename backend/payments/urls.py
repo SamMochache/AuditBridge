@@ -5,6 +5,7 @@ from .views import (
     PaymentListView,
     PaymentDetailView,
     ReconcilePaymentsView,
+    RetryReconcilePaymentView,
     UnmatchedPaymentsView,
     
     # Student endpoints
@@ -27,6 +28,7 @@ urlpatterns = [
     path('list/', PaymentListView.as_view(), name='payment-list'),
     path('<int:pk>/', PaymentDetailView.as_view(), name='payment-detail'),
     path('reconcile/', ReconcilePaymentsView.as_view(), name='reconcile'),
+    path('<int:pk>/retry/', RetryReconcilePaymentView.as_view(), name='retry-reconcile'),
     path('unmatched/', UnmatchedPaymentsView.as_view(), name='unmatched'),
     
     # Student management

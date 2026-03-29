@@ -39,8 +39,13 @@ def reconcile_payment(payment: Payment):
     )
     
     if not student_fees.exists():
-        payment.status = 'FAILED'
-        payment.error_message = 'No unpaid fees found for this student'
+        # The student is known but all fees are already settled.
+        # Mark as MATCHED (money received) with an informational note.
+        payment.status = 'MATCHED'
+        payment.error_message = (
+            'All fees for this student are already paid. '
+            'This payment is recorded as a surplus/advance.'
+        )
         payment.save()
         return
     

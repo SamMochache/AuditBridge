@@ -45,16 +45,28 @@ class UploadMpesaCSV(APIView):
         
         try:
             # Parse CSV
-            parse_mpesa_csv(file, school, request.user)
-            
+            parse_result = parse_mpesa_csv(file, school, request.user)
+
             # Reconcile newly uploaded payments
-            result = batch_reconcile_payments(school=school)
-            
+            recon_result = batch_reconcile_payments(school=school)
+
             return Response({
                 "success": "Payments uploaded and reconciled",
-                "summary": result
+                "summary": {
+                    "total": recon_result['total'],
+                    "matched": recon_result['matched'],
+                    "failed": recon_result['failed'],
+                    "created": parse_result['created'],
+                    "skipped_duplicates": parse_result['skipped_duplicates'],
+                    "parse_errors": parse_result['errors'],
+                }
             }, status=status.HTTP_200_OK)
-        
+
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             return Response(
                 {"error": f"Failed to process file: {str(e)}"},
@@ -112,6 +124,35 @@ class ReconcilePaymentsView(APIView):
             "success": "Reconciliation completed",
             "summary": result
         }, status=status.HTTP_200_OK)
+
+
+class RetryReconcilePaymentView(APIView):
+    """Retry reconciliation for a specific FAILED or UNPROCESSED payment."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        payment = get_object_or_404(Payment, pk=pk, school=request.user.school)
+
+        if payment.status not in ('FAILED', 'UNPROCESSED'):
+            return Response(
+                {"error": "Only FAILED or UNPROCESSED payments can be re-reconciled"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Reset and retry
+        payment.status = 'UNPROCESSED'
+        payment.error_message = None
+        payment.matched_fee = None
+        payment.save()
+
+        reconcile_payment(payment)
+        payment.refresh_from_db()
+
+        serializer = PaymentSerializer(payment)
+        return Response({
+            "success": f"Re-reconciliation complete. New status: {payment.status}",
+            "payment": serializer.data,
+        })
 
 
 class UnmatchedPaymentsView(generics.ListAPIView):
