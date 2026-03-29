@@ -8,9 +8,11 @@ RUN npm ci
 
 COPY . .
 
-# nginx proxies /api/ to the backend, so a relative base URL works inside Docker.
-# ENV is available to RUN commands, so Vite picks this up at build time.
-ENV VITE_API_URL=/api
+# VITE_API_URL is baked in at build time by Vite.
+# Pass the real backend URL as a build arg (e.g. on Railway, Render, etc.)
+# Local Docker Compose: defaults to /api (proxied by nginx in docker-compose setup).
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=$VITE_API_URL
 
 RUN npm run build
 
