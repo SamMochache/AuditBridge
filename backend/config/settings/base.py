@@ -80,21 +80,31 @@ AUTH_USER_MODEL = 'accounts.User'
 
 
 # Database
-_db_options = {}
-if os.environ.get('DB_SSLMODE', '') == 'require':
-    _db_options = {'sslmode': 'require'}
+import dj_database_url
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'auditbridge_db'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
-        'OPTIONS': _db_options,
+_DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
+if _DATABASE_URL:
+    # Neon / any hosted Postgres — parse the full connection URL
+    DATABASES = {
+        'default': dj_database_url.parse(
+            _DATABASE_URL,
+            conn_max_age=600,
+            ssl_require='sslmode=require' in _DATABASE_URL,
+        )
     }
-}
+else:
+    # Local development (Docker Compose) — individual vars
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME', 'auditbridge_db'),
+            'USER': os.environ.get('DB_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+        }
+    }
 
 
 # Password validation
