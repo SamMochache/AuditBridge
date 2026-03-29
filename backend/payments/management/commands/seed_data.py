@@ -232,7 +232,7 @@ class Command(BaseCommand):
                     )
                     payment_count += 1
         
-        self.stdout.write(f'Created {payment_count} payments')
+        self.stdout.write(f'Created {payment_count} payments (UNPROCESSED)')
 
         # Create some intentional errors for testing
         # 1. Payment with wrong admission number
@@ -250,6 +250,12 @@ class Command(BaseCommand):
         # 2. Duplicate transaction code (will fail unique constraint when processed)
         # We'll skip this to avoid breaking the seed
         
+        # Reconcile all payments so the dashboard shows real data
+        self.stdout.write('Reconciling payments...')
+        from payments.services.reconciliation import batch_reconcile_payments
+        result = batch_reconcile_payments(school=school)
+        self.stdout.write(f'Reconciled: {result["matched"]} matched, {result["failed"]} failed')
+
         self.stdout.write(self.style.SUCCESS(f'Seeding complete!'))
         self.stdout.write(self.style.SUCCESS(f'Summary:'))
         self.stdout.write(f'  - School: {school.name}')
