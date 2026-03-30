@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   TrendingUp,
@@ -200,9 +201,12 @@ const Dashboard = () => {
         )}
         {recentPayments.length > 0 && (
           <div className="mt-4 pt-3 border-t border-navy-100">
-            <a href="/payments" className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-smooth">
+            <Link
+              to="/payments"
+              className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-smooth"
+            >
               View all payments →
-            </a>
+            </Link>
           </div>
         )}
       </Card>
@@ -257,15 +261,15 @@ const StatCard = ({ title, value, subtitle, change, trend, icon: Icon, color }) 
 
 const QuickActionCard = ({ title, description, href }) => {
   return (
-    <a
-      href={href}
+    <Link
+      to={href}
       className="block p-4 rounded-lg border-2 border-navy-200 hover:border-primary-300 hover:bg-primary-50/50 transition-smooth group"
     >
       <h4 className="font-semibold text-navy-900 group-hover:text-primary-700 transition-smooth">
         {title}
       </h4>
       <p className="text-sm text-navy-500 mt-1">{description}</p>
-    </a>
+    </Link>
   );
 };
 
