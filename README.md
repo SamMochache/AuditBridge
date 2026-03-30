@@ -346,10 +346,25 @@ AuditBridge/
 
 ## License
 
-Copyright (c) 2026 AuditBridge
+Copyright (c) 2026 Sam Mochache. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+This software and its source code are the exclusive intellectual property of **Sam Mochache**.
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+**You may not**, without prior written permission from Sam Mochache:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+- Use this software or any part of it in a commercial product or service
+- Copy, modify, merge, adapt, or build upon this codebase
+- Distribute, sublicense, sell, or re-publish this software in any form
+- Deploy this software for use by any organisation or third party
+
+**Permitted use:**
+
+- Viewing and reviewing the source code for personal educational purposes only
+
+**To request a license or discuss usage**, contact:
+
+> Sam Mochache — open an issue on this repository or reach out directly via GitHub.
+
+Any unauthorised use of this software constitutes an infringement of copyright and may be subject to legal action.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. THE AUTHOR SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM UNAUTHORISED USE OF THIS SOFTWARE.
