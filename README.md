@@ -1,8 +1,31 @@
 # AuditBridge
 
-**M-Pesa Fee Reconciliation &amp; Reporting for Schools**
+**M-Pesa Fee Reconciliation & Reporting for Schools**
 
 AuditBridge is a full-stack SaaS application that helps Kenyan schools reconcile M-Pesa paybill payments with student fee records. Upload a Safaricom paybill CSV export and the system automatically matches each payment to the correct student and fee item, tracks outstanding balances, and generates audit-ready reports.
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Visit%20App-blue?style=for-the-badge)](https://audit-bridge-tau.vercel.app)
+[![API](https://img.shields.io/badge/API-Render-green?style=for-the-badge)](https://auditbridge.onrender.com/api/)
+[![Admin](https://img.shields.io/badge/Django%20Admin-Render-orange?style=for-the-badge)](https://auditbridge.onrender.com/admin/)
+
+---
+
+## Live Demo
+
+| | URL |
+|---|---|
+| **Frontend** | https://audit-bridge-tau.vercel.app |
+| **REST API** | https://auditbridge.onrender.com/api/ |
+| **Django Admin** | https://auditbridge.onrender.com/admin/ |
+
+### Test credentials
+
+| Role | Username | Password |
+|---|---|---|
+| Admin | `admin` | `admin123` |
+| Accountant | `accountant` | `accountant123` |
+
+> **Note:** The backend runs on Render's free tier and may take 30–60 seconds to respond after a period of inactivity (cold start). Subsequent requests are fast.
 
 ---
 
@@ -25,26 +48,23 @@ AuditBridge is a full-stack SaaS application that helps Kenyan schools reconcile
 | Layer     | Technology |
 |-----------|-----------|
 | Backend   | Django 5 · Django REST Framework · SimpleJWT |
-| Database  | PostgreSQL |
+| Database  | PostgreSQL (Neon serverless) |
 | Frontend  | React 19 · Vite · Tailwind CSS · Zustand · Framer Motion |
 | Auth      | JWT (access + refresh tokens, token blacklist on logout) |
+| Hosting   | Vercel (frontend) · Render (backend) · Neon (database) |
 
 ---
 
 ## Quick Start
 
-### Option A — Docker (recommended)
-
-The fastest way to run the full stack.
+### Option A — Docker (recommended for local dev)
 
 **Prerequisites:** Docker + Docker Compose
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/YOUR_USERNAME/auditbridge.git
 cd AuditBridge
 
-# Ensure backend/.env exists with at least DB_PASSWORD set
-# (copy from the example if needed)
 cp backend/.env.example backend/.env
 # Edit backend/.env → set DB_PASSWORD and SECRET_KEY
 
@@ -83,7 +103,7 @@ docker compose down -v       # also delete the database
 ### 1. Clone
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/YOUR_USERNAME/auditbridge.git
 cd AuditBridge
 ```
 
@@ -92,27 +112,19 @@ cd AuditBridge
 ```bash
 cd backend
 
-# Create and activate virtualenv
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
 cp .env.example .env
 # Edit .env – fill in SECRET_KEY, DB_PASSWORD, etc.
 
-# Create database (PostgreSQL)
-createdb auditbridge_db           # or use psql / pgAdmin
+createdb auditbridge_db
 
-# Run migrations
 python manage.py migrate
-
-# Seed demo data (optional but recommended)
 python manage.py seed_data
 
-# Start server
 python manage.py runserver
 ```
 
@@ -123,24 +135,15 @@ The API will be at `http://localhost:8000/api/`.
 ```bash
 cd frontend
 
-# Install dependencies
 npm install
 
-# (Optional) create .env.local to point at a different backend
+# Point at your local backend
 echo "VITE_API_URL=http://localhost:8000/api" > .env.local
 
-# Start dev server
 npm run dev
 ```
 
 The app will be at `http://localhost:5173`.
-
-### 4. Default login credentials (after seed)
-
-| Role       | Username    | Password       |
-|------------|-------------|----------------|
-| Admin      | admin       | admin123       |
-| Accountant | accountant  | accountant123  |
 
 ---
 
@@ -148,16 +151,19 @@ The app will be at `http://localhost:5173`.
 
 Copy `backend/.env.example` to `backend/.env` and set:
 
-| Variable       | Description                          | Default             |
-|----------------|--------------------------------------|---------------------|
-| `SECRET_KEY`   | Django secret key                    | insecure placeholder |
-| `DEBUG`        | `True` / `False`                     | `True`              |
-| `ALLOWED_HOSTS`| Comma-separated hostnames            | `localhost,127.0.0.1` |
-| `DB_NAME`      | PostgreSQL database name             | `auditbridge_db`    |
-| `DB_USER`      | PostgreSQL user                      | `postgres`          |
-| `DB_PASSWORD`  | PostgreSQL password                  | *(empty)*           |
-| `DB_HOST`      | PostgreSQL host                      | `localhost`         |
-| `DB_PORT`      | PostgreSQL port                      | `5432`              |
+| Variable        | Description                          | Default              |
+|-----------------|--------------------------------------|----------------------|
+| `SECRET_KEY`    | Django secret key                    | insecure placeholder |
+| `DEBUG`         | `True` / `False`                     | `True`               |
+| `ALLOWED_HOSTS` | Comma-separated hostnames            | `localhost,127.0.0.1`|
+| `DATABASE_URL`  | Full Postgres connection URL (Neon, etc.) | *(empty — uses DB_* vars)* |
+| `DB_NAME`       | PostgreSQL database name             | `auditbridge_db`     |
+| `DB_USER`       | PostgreSQL user                      | `postgres`           |
+| `DB_PASSWORD`   | PostgreSQL password                  | *(empty)*            |
+| `DB_HOST`       | PostgreSQL host                      | `localhost`          |
+| `DB_PORT`       | PostgreSQL port                      | `5432`               |
+
+> If `DATABASE_URL` is set it takes priority over the individual `DB_*` variables. Use this for hosted databases (Neon, Render Postgres, Railway, etc.).
 
 ---
 
@@ -195,14 +201,6 @@ The parser extracts:
 Rows with a blank `Paid In` (withdrawals, charges) are automatically skipped.
 
 A sample template can be downloaded from the **Upload** page in the app.
-
-### Reconciliation logic
-
-1. For each uploaded payment the system looks up the student by `student_admission_number`.
-2. If found, unpaid fee records are fetched in chronological order (earliest term first).
-3. The payment amount is applied sequentially across fees until exhausted.
-4. If the payment covers more than outstanding fees the surplus is noted; the payment is still marked **Matched**.
-5. If the student is not found the payment is marked **Failed** with an error description.
 
 ---
 
@@ -245,14 +243,15 @@ Query params for `/list/`: `status`, `search`, `start_date`, `end_date`, `page`,
 
 Query params for `/students/`: `search`, `payment_status` (PAID/UNPAID), `class_id`
 
-### Reports &amp; Dashboard
+### Reports & Dashboard
 
-| Method | Path                                   | Description              |
-|--------|----------------------------------------|--------------------------|
-| GET    | `/api/payments/dashboard/stats/`       | Aggregate financials     |
-| GET    | `/api/payments/dashboard/trends/`      | Daily collection totals  |
-| GET    | `/api/payments/dashboard/class-balances/` | Per-class balances    |
-| GET    | `/api/payments/audit-trail/`           | All payments, ordered by created_at |
+| Method | Path                                      | Description              |
+|--------|-------------------------------------------|--------------------------|
+| GET    | `/api/payments/dashboard/stats/`          | Aggregate financials     |
+| GET    | `/api/payments/dashboard/trends/`         | Daily collection totals  |
+| GET    | `/api/payments/dashboard/class-balances/` | Per-class balances       |
+| GET    | `/api/payments/dashboard/term-stats/`     | Term-by-term breakdown   |
+| GET    | `/api/payments/audit-trail/`              | All payments, ordered by created_at |
 
 ---
 
@@ -264,9 +263,11 @@ AuditBridge/
 │   ├── .env.example               # Environment variable template
 │   ├── requirements.txt
 │   ├── manage.py
+│   ├── entrypoint.sh              # Docker entrypoint (migrate + seed + gunicorn)
+│   ├── Dockerfile
 │   ├── config/
 │   │   ├── settings/
-│   │   │   ├── base.py            # Core settings (reads from .env)
+│   │   │   ├── base.py            # Core settings (reads from .env / DATABASE_URL)
 │   │   │   └── dev.py
 │   │   └── urls.py
 │   ├── accounts/                  # User auth (JWT)
@@ -284,12 +285,15 @@ AuditBridge/
 │       └── management/commands/
 │           └── seed_data.py       # Demo data generator
 └── frontend/
+    ├── Dockerfile
+    ├── nginx.conf
     ├── src/
     │   ├── pages/
     │   │   ├── Dashboard.jsx
     │   │   ├── Upload.jsx         # CSV upload with format guide
     │   │   ├── Payments.jsx       # Payment list + retry reconcile
     │   │   ├── Students.jsx
+    │   │   ├── Analytics.jsx      # Term-by-term fee analytics
     │   │   ├── Settings.jsx
     │   │   └── Login.jsx
     │   ├── services/
@@ -304,33 +308,48 @@ AuditBridge/
 
 ---
 
-## Roadmap — What would make this more valuable
+## Deployment
 
-These are the highest-impact features to add:
+| Layer    | Service | Notes |
+|----------|---------|-------|
+| Frontend | [Vercel](https://vercel.com) | Set `VITE_API_URL` to your backend URL |
+| Backend  | [Render](https://render.com) | Docker runtime, set `DATABASE_URL` + `SECRET_KEY` |
+| Database | [Neon](https://neon.tech) | Free serverless PostgreSQL, always-on |
+
+---
+
+## Roadmap
 
 | Feature | Value |
 |---------|-------|
-| **M-Pesa Daraja API (STK Push / C2B)** | Real-time payment notifications — no CSV download needed. Payments appear instantly when a parent pays. |
-| **Parent SMS/WhatsApp receipts** | Automatically message parents when a payment is received: *"KES 50,000 received for John Kamau (NA20260001). Balance: KES 16,000."* |
-| **Fee balance reminder SMS** | Bulk SMS to all parents with outstanding balances before a new term. |
-| **PDF fee statements & receipts** | Generate a printable fee statement or official receipt per student. |
-| **Excel / PDF report export** | End-of-term financial reports for the principal and board of governors. |
-| **Parent portal** | Parents log in (via phone number) to view their child's fee balance and payment history. |
-| **Multi-school management** | One admin account manages multiple schools — ideal for church schools or county councils. |
-| **Fee structure per class** | Different fee amounts for different classes/streams (e.g. Form 4 pays more than Form 1). |
-| **Bank reconciliation** | Cross-check M-Pesa receipts against the school's bank statement for full audit compliance. |
+| **M-Pesa Daraja API (STK Push / C2B)** | Real-time payment notifications — no CSV download needed |
+| **Parent SMS/WhatsApp receipts** | Auto-notify parents when a payment is received |
+| **Fee balance reminder SMS** | Bulk SMS to parents with outstanding balances before a new term |
+| **PDF fee statements & receipts** | Printable fee statement or official receipt per student |
+| **Excel / PDF report export** | End-of-term financial reports for the principal and board |
+| **Parent portal** | Parents log in via phone number to view fee balance and payment history |
+| **Multi-school management** | One admin account manages multiple schools |
+| **Fee structure per class** | Different fee amounts for different classes/streams |
+| **Bank reconciliation** | Cross-check M-Pesa receipts against the school's bank statement |
 
 ---
 
 ## Development Notes
 
-- **Seeding**: `python manage.py seed_data --clear` resets and re-seeds all demo data.
-- **Admin panel**: `python manage.py createsuperuser` then visit `http://localhost:8000/admin/`.
-- **CORS**: set to allow all origins in dev (`CORS_ALLOW_ALL_ORIGINS = True`). Restrict to your domain in production.
-- **Timezone**: set to `Africa/Nairobi` (EAT, UTC+3) in `base.py`.
+- **Seeding:** `python manage.py seed_data --clear` resets and re-seeds all demo data
+- **Re-seed on Render:** set env var `RESEED=true` → redeploy → remove the var
+- **Admin panel:** `python manage.py createsuperuser` then visit `/admin/`
+- **CORS:** set to allow all origins in dev. Restrict to your domain in production
+- **Timezone:** set to `Africa/Nairobi` (EAT, UTC+3) in `base.py`
 
 ---
 
 ## License
 
-MIT
+Copyright (c) 2026 AuditBridge
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
