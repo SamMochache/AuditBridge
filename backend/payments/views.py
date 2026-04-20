@@ -275,6 +275,37 @@ class UnmatchedPaymentsView(generics.ListAPIView):
         return get_unmatched_payments(school=self.request.user.school)
 
 
+class PaymentSuggestionsView(APIView):
+    """
+    GET /api/payments/<pk>/suggestions/
+
+    For a FAILED payment, returns the top-3 most likely student matches
+    using fuzzy string matching on the admission number.
+
+    Response: [{student_id, admission_number, name, confidence}]
+
+    The frontend shows these as "Did you mean?" options with a
+    one-click "Match to this student" button that calls RetryReconcilePaymentView
+    after updating the admission number.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        payment = get_object_or_404(Payment, pk=pk, school=request.user.school)
+
+        if payment.status != Payment.Status.FAILED:
+            return Response(
+                {"error": "Suggestions are only available for FAILED payments."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from payments.services.smart_match import suggest_students
+
+        suggestions = suggest_students(payment, school=request.user.school, top_k=3)
+        return Response({"suggestions": suggestions})
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # STUDENT ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
