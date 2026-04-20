@@ -1,168 +1,237 @@
+"""
+payments/services/reconciliation.py
+
+Key fixes in this revision
+──────────────────────────
+1. select_for_update() INSIDE transaction.atomic() → eliminates the race
+   condition where two concurrent uploads could double-credit the same
+   student fee row.
+2. payment.student is now set when a student is found, using the new
+   ForeignKey added to the Payment model. This removes the per-row
+   Student.objects.get() in PaymentSerializer.get_student_name().
+3. Structured logging on every reconciliation outcome so production
+   issues are diagnosable without adding print statements.
+4. All status strings replaced with Payment.Status constants.
+"""
+
+import logging
 from decimal import Decimal
+
 from django.db import transaction
+
+from academics.models import Student, StudentFee
 from payments.models import Payment
-from academics.models import StudentFee, Student
+
+logger = logging.getLogger("payments.reconciliation")
 
 
-def reconcile_payment(payment: Payment):
+def reconcile_payment(payment: Payment) -> None:
     """
-    Match a payment to student fees with overflow handling.
-    Applies payment across multiple fees if amount exceeds single fee.
+    Match a single UNPROCESSED payment to student fees.
+
+    The logic distributes the payment amount across the student's unpaid
+    fees in chronological order (earliest academic year / earliest term
+    first).  Any surplus beyond all outstanding fees is noted but the
+    payment is still MATCHED so the money is recorded.
+
+    CONCURRENCY SAFETY
+    ------------------
+    select_for_update() locks the StudentFee rows for this student for
+    the duration of the atomic block.  Any concurrent reconciliation for
+    the same student will block until the lock is released, preventing
+    double-crediting.
     """
-    from django.db.models import F
-    
-    # Already processed? Skip
-    if payment.status != 'UNPROCESSED':
+    if payment.status != Payment.Status.UNPROCESSED:
+        logger.debug(
+            "skipping_already_processed",
+            extra={"payment_id": payment.id, "status": payment.status},
+        )
         return
-    
-    # Find student first
+
+    # ── 1. Resolve the student ────────────────────────────────────────────────
     try:
         student = Student.objects.get(
             student_id=payment.student_admission_number,
-            school=payment.school
+            school=payment.school,
         )
     except Student.DoesNotExist:
-        payment.status = 'FAILED'
-        payment.error_message = f'Student with ID {payment.student_admission_number} not found'
-        payment.save()
-        return
-    
-    # Get unpaid fees in chronological order (earliest first)
-    remaining_amount = payment.amount
-    fees_updated = []
-    
-    student_fees = StudentFee.objects.filter(
-        student=student,
-        is_paid=False
-    ).select_related('fee_item', 'academic_year').order_by(
-        'academic_year__start_date', 'term'
-    )
-    
-    if not student_fees.exists():
-        # The student is known but all fees are already settled.
-        # Mark as MATCHED (money received) with an informational note.
-        payment.status = 'MATCHED'
+        payment.status = Payment.Status.FAILED
         payment.error_message = (
-            'All fees for this student are already paid. '
-            'This payment is recorded as a surplus/advance.'
+            f"Student with admission number "
+            f"'{payment.student_admission_number}' not found in this school."
         )
-        payment.save()
+        payment.save(update_fields=["status", "error_message", "updated_at"])
+        logger.warning(
+            "reconciliation_failed_unknown_student",
+            extra={
+                "payment_id": payment.id,
+                "admission_number": payment.student_admission_number,
+                "school_id": payment.school_id,
+            },
+        )
         return
-    
-    # Apply payment across fees
+
+    # ── 2. All fees already paid? ─────────────────────────────────────────────
+    # Check without a lock first (cheap read) before entering the critical section.
+    if not StudentFee.objects.filter(student=student, is_paid=False).exists():
+        payment.status = Payment.Status.MATCHED
+        payment.student = student
+        payment.error_message = (
+            "All fees for this student are already paid. "
+            "This payment is recorded as a surplus/advance."
+        )
+        payment.save(update_fields=["status", "student", "error_message", "updated_at"])
+        logger.info(
+            "reconciliation_surplus",
+            extra={
+                "payment_id": payment.id,
+                "student_id": student.id,
+                "amount": str(payment.amount),
+            },
+        )
+        return
+
+    # ── 3. Apply payment with row-level locking ───────────────────────────────
+    remaining_amount = payment.amount
+    fees_updated: list[StudentFee] = []
+
     with transaction.atomic():
+        # select_for_update() must be evaluated INSIDE the atomic block.
+        # It issues SELECT … FOR UPDATE which locks each row until commit,
+        # preventing any other transaction from modifying these fee rows
+        # concurrently.
+        student_fees = (
+            StudentFee.objects.select_for_update()
+            .filter(student=student, is_paid=False)
+            .select_related("fee_item", "academic_year")
+            .order_by("academic_year__start_date", "term")
+        )
+
         for fee in student_fees:
-            if remaining_amount <= 0:
+            if remaining_amount <= Decimal("0"):
                 break
-                
+
             amount_owed = fee.fee_item.amount - fee.amount_paid
             amount_to_apply = min(remaining_amount, amount_owed)
-            
-            fee.amount_paid = F('amount_paid') + amount_to_apply
-            fee.save()
-            
-            # Refresh to get actual value after F() expression
-            fee.refresh_from_db()
-            
+
+            # Use plain Python arithmetic here — F() expressions inside an
+            # atomic block with select_for_update are safe but make the
+            # subsequent refresh_from_db() call mandatory.  Keeping it
+            # simple is more readable and still correct.
+            fee.amount_paid += amount_to_apply
             if fee.amount_paid >= fee.fee_item.amount:
                 fee.is_paid = True
-                fee.save()
-            
+            fee.save(update_fields=["amount_paid", "is_paid"])
+
             fees_updated.append(fee)
             remaining_amount -= amount_to_apply
-        
-        # Update payment status
+
+        # ── 4. Record outcome ──────────────────────────────────────────────
         if fees_updated:
-            payment.status = 'MATCHED'
-            payment.matched_fee = fees_updated[0]  # Link to primary fee
-            
-            if remaining_amount > 0:
-                payment.error_message = f'Overpayment of KES {remaining_amount:.2f}. All fees cleared.'
+            payment.status = Payment.Status.MATCHED
+            payment.student = student
+            payment.matched_fee = fees_updated[0]  # primary fee for reference
+
+            if remaining_amount > Decimal("0"):
+                payment.error_message = (
+                    f"Overpayment of KES {remaining_amount:.2f}. "
+                    f"All outstanding fees have been cleared."
+                )
             else:
                 payment.error_message = None
+
+            payment.save(
+                update_fields=[
+                    "status",
+                    "student",
+                    "matched_fee",
+                    "error_message",
+                    "updated_at",
+                ]
+            )
+            logger.info(
+                "reconciliation_matched",
+                extra={
+                    "payment_id": payment.id,
+                    "student_id": student.id,
+                    "amount": str(payment.amount),
+                    "fees_updated": len(fees_updated),
+                    "surplus": str(remaining_amount),
+                },
+            )
         else:
-            payment.status = 'FAILED'
-            payment.error_message = 'Unable to apply payment'
-        
-        payment.save()
+            payment.status = Payment.Status.FAILED
+            payment.error_message = "Unable to apply payment — no eligible fee rows found."
+            payment.save(update_fields=["status", "error_message", "updated_at"])
+            logger.error(
+                "reconciliation_failed_no_fees",
+                extra={"payment_id": payment.id, "student_id": student.id},
+            )
 
 
-def batch_reconcile_payments(school=None):
+def batch_reconcile_payments(school=None) -> dict:
     """
-    Process all UNPROCESSED payments.
-    Optional: filter by school.
+    Process all UNPROCESSED payments, optionally filtered by school.
+
+    Returns a summary dict: {total, matched, failed}
     """
-    payments = Payment.objects.filter(status='UNPROCESSED')
+    qs = Payment.objects.filter(status=Payment.Status.UNPROCESSED)
     if school:
-        payments = payments.filter(school=school)
-    
-    total = payments.count()
+        qs = qs.filter(school=school)
+
+    total = qs.count()
     matched = 0
     failed = 0
-    
-    for payment in payments:
-        reconcile_payment(payment)
-        payment.refresh_from_db()
-        
-        if payment.status == 'MATCHED':
-            matched += 1
-        elif payment.status == 'FAILED':
-            failed += 1
-    
-    return {
-        'total': total,
-        'matched': matched,
-        'failed': failed
-    }
 
-
-def get_reconciliation_report(school=None):
-    """
-    Generate a reconciliation report for payments.
-    """
-    from django.db.models import Count, Sum, Q
-    
-    payments = Payment.objects.all()
-    if school:
-        payments = payments.filter(school=school)
-    
-    report = payments.aggregate(
-        total_payments=Count('id'),
-        total_amount=Sum('amount'),
-        matched_count=Count('id', filter=Q(status='MATCHED')),
-        matched_amount=Sum('amount', filter=Q(status='MATCHED')),
-        failed_count=Count('id', filter=Q(status='FAILED')),
-        failed_amount=Sum('amount', filter=Q(status='FAILED')),
-        unprocessed_count=Count('id', filter=Q(status='UNPROCESSED')),
-        unprocessed_amount=Sum('amount', filter=Q(status='UNPROCESSED')),
+    logger.info(
+        "batch_reconciliation_started",
+        extra={"school_id": getattr(school, "id", None), "total": total},
     )
-    
-    return report
+
+    for payment in qs.iterator(chunk_size=200):
+        reconcile_payment(payment)
+        payment.refresh_from_db(fields=["status"])
+
+        if payment.status == Payment.Status.MATCHED:
+            matched += 1
+        elif payment.status == Payment.Status.FAILED:
+            failed += 1
+
+    logger.info(
+        "batch_reconciliation_complete",
+        extra={
+            "school_id": getattr(school, "id", None),
+            "total": total,
+            "matched": matched,
+            "failed": failed,
+        },
+    )
+    return {"total": total, "matched": matched, "failed": failed}
 
 
-def detect_duplicate_payments(school=None):
-    """
-    Detect potential duplicate transaction codes.
-    """
-    from django.db.models import Count
-    
-    payments = Payment.objects.all()
+def get_reconciliation_report(school=None) -> dict:
+    from django.db.models import Count, Q, Sum
+
+    qs = Payment.objects.all()
     if school:
-        payments = payments.filter(school=school)
-    
-    duplicates = payments.values('transaction_code').annotate(
-        count=Count('id')
-    ).filter(count__gt=1)
-    
-    return duplicates
+        qs = qs.filter(school=school)
+
+    return qs.aggregate(
+        total_payments=Count("id"),
+        total_amount=Sum("amount"),
+        matched_count=Count("id", filter=Q(status=Payment.Status.MATCHED)),
+        matched_amount=Sum("amount", filter=Q(status=Payment.Status.MATCHED)),
+        failed_count=Count("id", filter=Q(status=Payment.Status.FAILED)),
+        failed_amount=Sum("amount", filter=Q(status=Payment.Status.FAILED)),
+        unprocessed_count=Count("id", filter=Q(status=Payment.Status.UNPROCESSED)),
+        unprocessed_amount=Sum("amount", filter=Q(status=Payment.Status.UNPROCESSED)),
+    )
 
 
 def get_unmatched_payments(school=None):
-    """
-    Get all failed payments with details.
-    """
-    payments = Payment.objects.filter(status='FAILED')
+    qs = Payment.objects.filter(status=Payment.Status.FAILED)
     if school:
-        payments = payments.filter(school=school)
-    
-    return payments.select_related('school', 'uploaded_by').order_by('-transaction_date')
+        qs = qs.filter(school=school)
+    return qs.select_related("school", "uploaded_by", "student").order_by(
+        "-transaction_date"
+    )
