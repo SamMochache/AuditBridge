@@ -1,0 +1,156 @@
+##
+# .github/workflows/ci.yml
+#
+# Runs on every push and pull request.
+# Jobs:
+#   backend-test  — Django test suite against a real PostgreSQL container
+#   frontend-lint — ESLint check on the React code
+#
+# Required secrets (set in GitHub → Settings → Secrets → Actions):
+#   None required for CI — all credentials are test-only values defined here.
+#
+# To add deployment:
+#   Add a `deploy` job that depends on both test jobs and runs only on
+#   pushes to `main`.  Use Render's deploy hooks or the Vercel GitHub
+#   integration for automatic deploys.
+##
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ── Backend tests ────────────────────────────────────────────────────────────
+  backend-test:
+    name: Django Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: auditbridge_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.base
+      SECRET_KEY: ci-test-secret-key-not-used-in-production
+      DEBUG: "True"
+      DB_NAME: auditbridge_test
+      DB_USER: postgres
+      DB_PASSWORD: testpassword
+      DB_HOST: localhost
+      DB_PORT: 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Python dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install test-only extras
+          pip install coverage
+
+      - name: Run migrations
+        working-directory: backend
+        run: python manage.py migrate --noinput
+
+      - name: Run tests with coverage
+        working-directory: backend
+        run: |
+          coverage run --source=payments,accounts,academics \
+            manage.py test payments.tests --verbosity=2
+          coverage report --fail-under=70
+          coverage xml -o coverage.xml
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: backend/coverage.xml
+          fail_ci_if_error: false
+
+  # ── Frontend lint ────────────────────────────────────────────────────────────
+  frontend-lint:
+    name: Frontend ESLint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build (smoke test)
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://auditbridge.onrender.com/api
+        run: npm run build
+
+  # ── Security audit ───────────────────────────────────────────────────────────
+  security-audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit Python dependencies
+        working-directory: backend
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2023-57
+        continue-on-error: true  # Report but don't fail on known low-severity issues
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Audit npm dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
+        continue-on-error: true
