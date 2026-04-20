@@ -1,17 +1,52 @@
-asgiref==3.11.1
-gunicorn==23.0.0
-certifi==2026.1.4
-charset-normalizer==3.4.4
+# ── Core Django ───────────────────────────────────────────────────────────────
 Django==5.2.11
-django-cors-headers==4.3.1
 djangorestframework==3.16.1
 djangorestframework-simplejwt==5.3.1
-idna==3.11
-pillow==12.1.0
+django-cors-headers==4.3.1
+
+# ── Database ───────────────────────────────────────────────────────────────────
 psycopg2-binary==2.9.11
-PyJWT==2.8.0
-python-dotenv==1.2.1
 dj-database-url==2.3.0
+
+# ── Cache (Redis) ──────────────────────────────────────────────────────────────
+# Required in production.  In local dev without REDIS_URL set, Django
+# falls back to LocMemCache automatically (see settings/base.py).
+redis==5.2.1                 # Redis Python client
+hiredis==3.0.0               # Optional C parser — 5-10× faster Redis responses
+
+# ── Server ─────────────────────────────────────────────────────────────────────
+gunicorn==23.0.0
+
+# ── Auth / Crypto ──────────────────────────────────────────────────────────────
+PyJWT==2.8.0
+
+# ── Env / Config ───────────────────────────────────────────────────────────────
+python-dotenv==1.2.1
+
+# ── HTTP ───────────────────────────────────────────────────────────────────────
 requests==2.32.5
+
+# ── File type detection (optional but recommended) ─────────────────────────────
+# Used by PaymentUploadSerializer to validate CSV MIME type.
+# Install system package first: apt-get install libmagic1
+# python-magic==0.4.27
+
+# ── Fuzzy string matching (optional but recommended) ──────────────────────────
+# Used by smart_match.py for student suggestion scoring.
+# Falls back to Python stdlib difflib if not installed.
+# rapidfuzz==3.9.7
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+asgiref==3.11.1
 sqlparse==0.5.5
+pillow==12.1.0
+
+# ── Production dependencies ────────────────────────────────────────────────────
+certifi==2026.1.4
+charset-normalizer==3.4.4
+idna==3.11
 urllib3==2.6.3
+
+# ── Dev / test only (not installed in production Docker image) ─────────────────
+# coverage==7.6.1
+# pip-audit==2.7.3
