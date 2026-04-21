@@ -29,17 +29,9 @@ def reconcile_payment(payment: Payment) -> None:
     """
     Match a single UNPROCESSED payment to student fees.
 
-    The logic distributes the payment amount across the student's unpaid
-    fees in chronological order (earliest academic year / earliest term
-    first).  Any surplus beyond all outstanding fees is noted but the
-    payment is still MATCHED so the money is recorded.
-
-    CONCURRENCY SAFETY
-    ------------------
-    select_for_update() locks the StudentFee rows for this student for
-    the duration of the atomic block.  Any concurrent reconciliation for
-    the same student will block until the lock is released, preventing
-    double-crediting.
+    Concurrency-safe:
+    - All reads + decisions about StudentFee happen inside transaction.atomic()
+    - select_for_update() ensures no double-crediting or stale reads
     """
     if payment.status != Payment.Status.UNPROCESSED:
         logger.debug(
@@ -48,7 +40,7 @@ def reconcile_payment(payment: Payment) -> None:
         )
         return
 
-    # ── 1. Resolve the student ────────────────────────────────────────────────
+    # ── 1. Resolve student ────────────────────────────────────────────────
     try:
         student = Student.objects.get(
             student_id=payment.student_admission_number,
@@ -61,6 +53,7 @@ def reconcile_payment(payment: Payment) -> None:
             f"'{payment.student_admission_number}' not found in this school."
         )
         payment.save(update_fields=["status", "error_message", "updated_at"])
+
         logger.warning(
             "reconciliation_failed_unknown_student",
             extra={
@@ -71,66 +64,71 @@ def reconcile_payment(payment: Payment) -> None:
         )
         return
 
-    # ── 2. All fees already paid? ─────────────────────────────────────────────
-    # Check without a lock first (cheap read) before entering the critical section.
-    if not StudentFee.objects.filter(student=student, is_paid=False).exists():
-        payment.status = Payment.Status.MATCHED
-        payment.student = student
-        payment.error_message = (
-            "All fees for this student are already paid. "
-            "This payment is recorded as a surplus/advance."
-        )
-        payment.save(update_fields=["status", "student", "error_message", "updated_at"])
-        logger.info(
-            "reconciliation_surplus",
-            extra={
-                "payment_id": payment.id,
-                "student_id": student.id,
-                "amount": str(payment.amount),
-            },
-        )
-        return
-
-    # ── 3. Apply payment with row-level locking ───────────────────────────────
+    # ── 2. Apply payment WITH LOCKING (FIXED) ─────────────────────────────
     remaining_amount = payment.amount
     fees_updated: list[StudentFee] = []
 
     with transaction.atomic():
-        # select_for_update() must be evaluated INSIDE the atomic block.
-        # It issues SELECT … FOR UPDATE which locks each row until commit,
-        # preventing any other transaction from modifying these fee rows
-        # concurrently.
+        # 🔒 Lock rows FIRST
         student_fees = (
             StudentFee.objects.select_for_update()
-            .filter(student=student, is_paid=False)
+            .filter(student=student)
             .select_related("fee_item", "academic_year")
             .order_by("academic_year__start_date", "term")
         )
 
+        # ✅ SAFE existence check (under lock)
+        has_outstanding = False
+        for fee in student_fees:
+            amount_owed = fee.fee_item.amount - fee.amount_paid
+            if amount_owed > 0:
+                has_outstanding = True
+                break
+
+        if not has_outstanding:
+            payment.status = Payment.Status.MATCHED
+            payment.student = student
+            payment.error_message = (
+                "All fees for this student are already paid. "
+                "This payment is recorded as a surplus/advance."
+            )
+            payment.save(update_fields=["status", "student", "error_message", "updated_at"])
+
+            logger.info(
+                "reconciliation_surplus",
+                extra={
+                    "payment_id": payment.id,
+                    "student_id": student.id,
+                    "amount": str(payment.amount),
+                },
+            )
+            return
+
+        # 🔁 Apply payment
         for fee in student_fees:
             if remaining_amount <= Decimal("0"):
                 break
 
             amount_owed = fee.fee_item.amount - fee.amount_paid
+            if amount_owed <= Decimal("0"):
+                continue
+
             amount_to_apply = min(remaining_amount, amount_owed)
 
-            # Use plain Python arithmetic here — F() expressions inside an
-            # atomic block with select_for_update are safe but make the
-            # subsequent refresh_from_db() call mandatory.  Keeping it
-            # simple is more readable and still correct.
             fee.amount_paid += amount_to_apply
             if fee.amount_paid >= fee.fee_item.amount:
                 fee.is_paid = True
+
             fee.save(update_fields=["amount_paid", "is_paid"])
 
             fees_updated.append(fee)
             remaining_amount -= amount_to_apply
 
-        # ── 4. Record outcome ──────────────────────────────────────────────
+        # ── 3. Outcome ────────────────────────────────────────────────────
         if fees_updated:
             payment.status = Payment.Status.MATCHED
             payment.student = student
-            payment.matched_fee = fees_updated[0]  # primary fee for reference
+            payment.matched_fee = fees_updated[0]
 
             if remaining_amount > Decimal("0"):
                 payment.error_message = (
@@ -149,6 +147,7 @@ def reconcile_payment(payment: Payment) -> None:
                     "updated_at",
                 ]
             )
+
             logger.info(
                 "reconciliation_matched",
                 extra={
@@ -160,9 +159,11 @@ def reconcile_payment(payment: Payment) -> None:
                 },
             )
         else:
+            # Should be extremely rare now
             payment.status = Payment.Status.FAILED
             payment.error_message = "Unable to apply payment — no eligible fee rows found."
             payment.save(update_fields=["status", "error_message", "updated_at"])
+
             logger.error(
                 "reconciliation_failed_no_fees",
                 extra={"payment_id": payment.id, "student_id": student.id},
